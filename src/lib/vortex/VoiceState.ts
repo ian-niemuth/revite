@@ -92,6 +92,24 @@ class VoiceStateReference {
 
         // Start polling room info
         this.pollRoomCounts();
+
+        // Listen for desktop app commands (Avreth Desktop sends these via postMessage)
+        if (typeof window !== "undefined") {
+            window.addEventListener("message", (e) => {
+                if (e.data?.type !== "avreth-desktop") return;
+                switch (e.data.command) {
+                    case "toggle-mute":
+                        this.toggleMute();
+                        break;
+                    case "toggle-deafen":
+                        this.toggleDeafen();
+                        break;
+                    case "disconnect":
+                        this.disconnect();
+                        break;
+                }
+            });
+        }
     }
 
     private async pollRoomCounts() {
@@ -337,6 +355,24 @@ class VoiceStateReference {
     @action async stopDeafen() {
         this.deaf = false;
         this.unmuteAllRemote();
+    }
+
+    async toggleMute() {
+        if (this.status !== VoiceStatus.CONNECTED) return;
+        if (this.producing) {
+            await this.stopProducing("audio");
+        } else {
+            await this.startProducing("audio");
+        }
+    }
+
+    async toggleDeafen() {
+        if (this.status !== VoiceStatus.CONNECTED) return;
+        if (this.deaf) {
+            await this.stopDeafen();
+        } else {
+            await this.startDeafen();
+        }
     }
 
     async startProducing(type: ProduceType) {
