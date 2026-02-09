@@ -13,8 +13,6 @@ import { useSystemAlert } from "../../updateWorker";
 import { StatusBar } from "../RevoltApp";
 import { FormCreate } from "./forms/FormCreate";
 import { FormLogin } from "./forms/FormLogin";
-import { FormReset, FormSendReset } from "./forms/FormReset";
-import { FormResend, FormVerify } from "./forms/FormVerify";
 
 export default observer(() => {
     const state = useApplicationState();
@@ -70,18 +68,6 @@ export default observer(() => {
                         <Switch>
                             <Route path="/login/create">
                                 <FormCreate />
-                            </Route>
-                            <Route path="/login/resend">
-                                <FormResend />
-                            </Route>
-                            <Route path="/login/verify/:token">
-                                <FormVerify />
-                            </Route>
-                            <Route path="/login/reset/:token">
-                                <FormReset />
-                            </Route>
-                            <Route path="/login/reset">
-                                <FormSendReset />
                             </Route>
                             <Route path="/">
                                 <FormLogin />

@@ -155,16 +155,6 @@ export const Form = observer(({ page, callback }: Props) => {
                         }
                     />
                 </div>
-                <div className={styles.subtitle}>
-                    <Text
-                        id={
-                            page === "create"
-                                ? "login.subtitle2"
-                                : "login.subtitle"
-                        }
-                    />
-                    <div>(avreth.com)</div>
-                </div>
             </div>
 
             {/* Preact / React typing incompatabilities */}
@@ -235,29 +225,6 @@ export const Form = observer(({ page, callback }: Props) => {
                         <Text id="login.new" />{" "}
                         <Link to="/login/create">
                             <Text id="login.create" />
-                        </Link>
-                    </span>
-                    <span className={styles.create}>
-                        <Text id="login.forgot" />{" "}
-                        <Link to="/login/reset">
-                            <Text id="login.reset" />
-                        </Link>
-                    </span>
-                    <span className={styles.create}>
-                        <Text id="login.missing_verification" />{" "}
-                        <Link to="/login/resend">
-                            <Text id="login.resend" />
-                        </Link>
-                    </span>
-                </>
-            )}
-            {(page === "reset" ||
-                page === "resend" ||
-                page === "send_reset") && (
-                <>
-                    <span className={styles.create}>
-                        <Link to="/login">
-                            <Text id="login.remembered" />
                         </Link>
                     </span>
                 </>
