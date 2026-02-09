@@ -24,6 +24,7 @@ import placeholderSVG from "../items/placeholder.svg";
 
 import { useClient } from "../../../controllers/client/ClientController";
 import { modalController } from "../../../controllers/modals/ModalController";
+import VoicePanel from "../../voice/VoicePanel";
 import { GenericSidebarBase, GenericSidebarList } from "../SidebarBase";
 import ButtonItem, { ChannelButton } from "../items/ButtonItem";
 import ConnectionStatus from "../items/ConnectionStatus";
@@ -176,6 +177,7 @@ export default observer(() => {
                 })}
                 <PaintCounter />
             </GenericSidebarList>
+            <VoicePanel />
         </GenericSidebarBase>
     );
 });

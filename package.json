@@ -115,6 +115,7 @@
         "eventemitter3": "^4.0.7",
         "history": "4",
         "json-stringify-deterministic": "^1.0.2",
+        "livekit-client": "^2.1.0",
         "localforage": "^1.9.0",
         "lodash": "^4.17.21",
         "lodash.defaultsdeep": "^4.6.1",

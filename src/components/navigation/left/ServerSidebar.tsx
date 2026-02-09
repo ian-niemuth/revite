@@ -17,6 +17,7 @@ import { useApplicationState } from "../../../mobx/State";
 import { useClient } from "../../../controllers/client/ClientController";
 import CollapsibleSection from "../../common/CollapsibleSection";
 import ServerHeader from "../../common/ServerHeader";
+import VoicePanel from "../../voice/VoicePanel";
 import { ChannelButton } from "../items/ButtonItem";
 import ConnectionStatus from "../items/ConnectionStatus";
 
@@ -150,6 +151,7 @@ export default observer(() => {
                 })}>
                 {elements}
             </ServerList>
+            <VoicePanel />
             <PaintCounter small />
         </ServerBase>
     );
