@@ -2175,6 +2175,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@livekit/krisp-noise-filter@npm:^0.2.12":
+  version: 0.2.16
+  resolution: "@livekit/krisp-noise-filter@npm:0.2.16"
+  peerDependencies:
+    livekit-client: ^2.0.8
+  checksum: 5b4bbf2543584f0c0353cc9272fea0f9d6555a0ea78037d27d7a249b91c89d1958e4a44fc60a51ddbf66d8ab6ee4e254725fce1ffab37d4cdb7e0bae8744a026
+  languageName: node
+  linkType: hard
+
 "@livekit/mutex@npm:1.1.1":
   version: 1.1.1
   resolution: "@livekit/mutex@npm:1.1.1"
@@ -3731,6 +3740,7 @@ __metadata:
     "@fontsource/ubuntu-mono": ^4.4.5
     "@hcaptcha/react-hcaptcha": ^1.4.4
     "@insertish/vite-plugin-babel-macros": ^1.0.5
+    "@livekit/krisp-noise-filter": ^0.2.12
     "@preact/preset-vite": ^2.0.0
     "@revoltchat/rehype-katex": 6.0.3-patch.1
     "@revoltchat/ui": ^1.0.77

@@ -68,9 +68,16 @@ class VoiceStateReference {
     participantCounts: Map<string, number>;
     roomParticipants: Map<string, { identity: string; name: string }[]>;
 
+    // QoL feature observables
+    speakingParticipants: Map<string, boolean>;
+    connectionQualities: Map<string, string>;
+    userVolumes: Map<string, number>;
+    krispEnabled: boolean;
+
     private room: any; // LiveKit Room instance
     private deaf: boolean;
     private producing: boolean;
+    private krispProcessor: any; // Krisp noise filter processor instance
 
     constructor() {
         this.roomId = null;
@@ -83,6 +90,27 @@ class VoiceStateReference {
         this.room = null;
         this.deaf = false;
         this.producing = false;
+
+        // QoL feature init
+        this.speakingParticipants = new Map();
+        this.connectionQualities = new Map();
+        this.krispEnabled =
+            localStorage.getItem("avreth:krisp") !== "false"; // default true
+        this.krispProcessor = null;
+
+        // Load persisted user volumes
+        this.userVolumes = new Map();
+        try {
+            const saved = localStorage.getItem("avreth:userVolumes");
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                for (const [k, v] of Object.entries(parsed)) {
+                    this.userVolumes.set(k, v as number);
+                }
+            }
+        } catch {
+            // ignore
+        }
 
         this.disconnect = this.disconnect.bind(this);
 
@@ -110,6 +138,10 @@ class VoiceStateReference {
                 }
             });
         }
+    }
+
+    get localIdentity(): string | null {
+        return this.room?.localParticipant?.identity ?? null;
     }
 
     private async pollRoomCounts() {
@@ -178,9 +210,11 @@ class VoiceStateReference {
             });
 
             // Dynamically import livekit-client
-            const { Room, RoomEvent } = await import("livekit-client");
+            const { Room, RoomEvent, Track, ConnectionQuality } = await import(
+                "livekit-client"
+            );
 
-            const lkRoom = new Room({
+            const roomOptions: any = {
                 adaptiveStream: false,
                 dynacast: false,
                 audioCaptureDefaults: {
@@ -188,7 +222,17 @@ class VoiceStateReference {
                     echoCancellation: true,
                     noiseSuppression: true,
                 },
-            });
+            };
+
+            // Apply saved audio input device
+            const savedInput = localStorage.getItem("avreth:audioInput");
+            if (savedInput) {
+                roomOptions.audioCaptureDefaults.deviceId = savedInput;
+            }
+
+            const lkRoom = new Room(roomOptions);
+
+            const savedOutput = localStorage.getItem("avreth:audioOutput");
 
             // Set up event listeners
             lkRoom.on(RoomEvent.ParticipantConnected, () => {
@@ -201,18 +245,33 @@ class VoiceStateReference {
                 this.syncParticipants(lkRoom);
             });
 
-            lkRoom.on(RoomEvent.TrackSubscribed, (track: any) => {
-                // Attach audio tracks to DOM so they actually play
-                if (track.kind === "audio") {
-                    const el = track.attach();
-                    el.id = `lk-audio-${track.sid}`;
-                    document.body.appendChild(el);
-                }
-                this.syncParticipants(lkRoom);
-                if (this.deaf) {
-                    this.muteAllRemote();
-                }
-            });
+            lkRoom.on(
+                RoomEvent.TrackSubscribed,
+                (track: any, _pub: any, participant: any) => {
+                    // Attach audio tracks to DOM so they actually play
+                    if (track.kind === "audio") {
+                        const el = track.attach();
+                        el.id = `lk-audio-${track.sid}`;
+                        document.body.appendChild(el);
+                    }
+                    this.syncParticipants(lkRoom);
+                    if (this.deaf) {
+                        this.muteAllRemote();
+                    }
+
+                    // Apply saved per-user volume
+                    const savedVol = this.userVolumes.get(
+                        participant.identity,
+                    );
+                    if (savedVol !== undefined) {
+                        try {
+                            participant.setVolume(savedVol);
+                        } catch {
+                            // ignore
+                        }
+                    }
+                },
+            );
 
             lkRoom.on(RoomEvent.TrackUnsubscribed, (track: any) => {
                 // Detach and remove audio elements
@@ -237,15 +296,63 @@ class VoiceStateReference {
                     this.roomName = null;
                     this.participants.clear();
                     this.participantNames.clear();
+                    this.speakingParticipants.clear();
+                    this.connectionQualities.clear();
                     this.room = null;
                     this.producing = false;
+                    this.krispProcessor = null;
                 });
             });
+
+            // Speaking indicators
+            lkRoom.on(
+                RoomEvent.ActiveSpeakersChanged,
+                (speakers: any[]) => {
+                    runInAction(() => {
+                        // Reset all to not speaking
+                        for (const key of this.speakingParticipants.keys()) {
+                            this.speakingParticipants.set(key, false);
+                        }
+                        // Set active speakers
+                        for (const speaker of speakers) {
+                            this.speakingParticipants.set(
+                                speaker.identity,
+                                true,
+                            );
+                        }
+                    });
+                },
+            );
+
+            // Connection quality indicators
+            lkRoom.on(
+                RoomEvent.ConnectionQualityChanged,
+                (quality: string, participant: any) => {
+                    runInAction(() => {
+                        this.connectionQualities.set(
+                            participant.identity,
+                            quality,
+                        );
+                    });
+                },
+            );
 
             await lkRoom.connect(url, token);
 
             // Play join chime for ourselves
             playChime("join");
+
+            // Apply saved output device after connect
+            if (savedOutput) {
+                try {
+                    await lkRoom.switchActiveDevice(
+                        "audiooutput",
+                        savedOutput,
+                    );
+                } catch {
+                    // Device may no longer exist
+                }
+            }
 
             runInAction(() => {
                 this.room = lkRoom;
@@ -259,6 +366,27 @@ class VoiceStateReference {
                 this.producing = true;
                 this.syncParticipants(lkRoom);
             });
+
+            // Apply Krisp noise suppression after mic is live (needs AudioContext)
+            if (this.krispEnabled) {
+                try {
+                    const { KrispNoiseFilter, isKrispNoiseFilterSupported } =
+                        await import("@livekit/krisp-noise-filter");
+                    if (isKrispNoiseFilterSupported()) {
+                        const processor = KrispNoiseFilter();
+                        const micPub =
+                            lkRoom.localParticipant.getTrackPublication(
+                                Track.Source.Microphone,
+                            );
+                        if (micPub?.track) {
+                            await micPub.track.setProcessor(processor);
+                            this.krispProcessor = processor;
+                        }
+                    }
+                } catch {
+                    // Krisp not available, continue without it
+                }
+            }
         } catch (err) {
             console.error("Voice connect error:", err);
             runInAction(() => {
@@ -315,9 +443,12 @@ class VoiceStateReference {
         this.roomName = null;
         this.participants.clear();
         this.participantNames.clear();
+        this.speakingParticipants.clear();
+        this.connectionQualities.clear();
         this.room = null;
         this.producing = false;
         this.deaf = false;
+        this.krispProcessor = null;
     }
 
     isProducing(type: ProduceType) {
@@ -400,6 +531,89 @@ class VoiceStateReference {
             });
         } catch (err) {
             console.error("Failed to disable microphone:", err);
+        }
+    }
+
+    // --- Krisp Noise Suppression ---
+
+    async toggleKrisp() {
+        this.krispEnabled = !this.krispEnabled;
+        localStorage.setItem(
+            "avreth:krisp",
+            this.krispEnabled ? "true" : "false",
+        );
+
+        if (!this.room) return;
+
+        try {
+            const { Track } = await import("livekit-client");
+            const micPub = this.room.localParticipant.getTrackPublication(
+                Track.Source.Microphone,
+            );
+            if (!micPub?.track) return;
+
+            if (this.krispEnabled) {
+                const { KrispNoiseFilter, isKrispNoiseFilterSupported } =
+                    await import("@livekit/krisp-noise-filter");
+                if (isKrispNoiseFilterSupported()) {
+                    const processor = KrispNoiseFilter();
+                    this.krispProcessor = processor;
+                    await micPub.track.setProcessor(processor);
+                }
+            } else {
+                await micPub.track.stopProcessor();
+                this.krispProcessor = null;
+            }
+        } catch (err) {
+            console.error("Failed to toggle Krisp:", err);
+        }
+    }
+
+    // --- Device Selection ---
+
+    async switchAudioInput(deviceId: string) {
+        localStorage.setItem("avreth:audioInput", deviceId);
+        if (!this.room) return;
+
+        try {
+            await this.room.switchActiveDevice("audioinput", deviceId);
+        } catch (err) {
+            console.error("Failed to switch audio input:", err);
+        }
+    }
+
+    async switchAudioOutput(deviceId: string) {
+        localStorage.setItem("avreth:audioOutput", deviceId);
+        if (!this.room) return;
+
+        try {
+            await this.room.switchActiveDevice("audiooutput", deviceId);
+        } catch (err) {
+            console.error("Failed to switch audio output:", err);
+        }
+    }
+
+    // --- Per-User Volume ---
+
+    @action setUserVolume(identity: string, volume: number) {
+        this.userVolumes.set(identity, volume);
+
+        // Persist
+        const obj: Record<string, number> = {};
+        for (const [k, v] of this.userVolumes) {
+            obj[k] = v;
+        }
+        localStorage.setItem("avreth:userVolumes", JSON.stringify(obj));
+
+        // Apply to remote participant
+        if (!this.room) return;
+        const participant = this.room.remoteParticipants.get(identity);
+        if (participant) {
+            try {
+                participant.setVolume(volume);
+            } catch {
+                // ignore
+            }
         }
     }
 }
